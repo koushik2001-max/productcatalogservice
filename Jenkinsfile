@@ -1,18 +1,41 @@
+def secrets = [
+    [
+        path: 'secrets/creds/my-secret-text',
+        engineVersion: 2,
+        secretValues: [
+            [envVar: 'SONARQUBE_TOKEN', vaultKey: 'productcatlog']
+        ]
+    ]
+]
+
+def configuration = [
+    vaultUrl: 'http://65.0.30.51:8200',
+    vaultCredentialId: 'vault-geetha-token',
+    engineVersion: 2
+]
+
 pipeline {
-  agent any
-  options {
-    buildDiscarder(logRotator(numToKeepStr: '5'))
-  }
-  environment {
-    
-    DOCKERHUB_CREDENTIALS = credentials('dockerhub')
-  }
-  stages {
+    agent any
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '5'))
+    }
+    environment {
+        DOCKERHUB_CREDENTIALS = credentials('dockerhub')
+    }
+    stages {
+        stage('Vault') {
+            steps {
+                script {
+                    withVault([configuration: configuration, vaultSecrets: secrets]) {
+                        // Extract the SonarQube Token
+                        SONARQUBE_TOKEN = env.SONARQUBE_TOKEN
+                        sh "echo \${SONARQUBE_TOKEN}"
+                    }
+                }
+            }
+        }
 
 
-
-    
-  
           stage('Docker Bench Security') {
       steps {
         sh 'chmod +x docker-bench-security.sh'
@@ -24,11 +47,8 @@ pipeline {
      stage('SonarQube Analysis') {
           agent any
       steps {
-       
-
-       sh '/var/opt/sonar-scanner-4.7.0.2747-linux/bin/sonar-scanner -Dsonar.projectKey=productcatalogservice -Dsonar.sources=. -Dsonar.host.url=http://172.31.7.193:9000 -Dsonar.token=sqp_915c40c0dac64042102fb9bf43bccb351f8f8da9'
-
-        
+        withVault([configuration: configuration, vaultSecrets: secrets]) {
+       sh '/var/opt/sonar-scanner-4.7.0.2747-linux/bin/sonar-scanner -Dsonar.projectKey=productcatalogservice -Dsonar.sources=. -Dsonar.host.url=http://172.31.7.193:9000 -Dsonar.token=$SONARQUBE_TOKEN'  
       }
     }
 
